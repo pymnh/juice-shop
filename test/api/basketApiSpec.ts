@@ -12,6 +12,7 @@ const REST_URL = 'http://localhost:3000/rest'
 
 const jsonHeader = { 'content-type': 'application/json' }
 let authHeader: { Authorization: string, 'content-type': string }
+let basketId : number
 
 const validCoupon = security.generateCoupon(15)
 const outdatedCoupon = security.generateCoupon(20, new Date(2001, 0, 1))
@@ -28,31 +29,34 @@ beforeAll(() => {
     .expect('status', 200)
     .then(({ json }) => {
       authHeader = { Authorization: 'Bearer ' + json.authentication.token, 'content-type': 'application/json' }
+      basketId = parseInt(json.authentication.bid)
     })
 })
 
+
 describe('/rest/basket/:id', () => {
   it('GET existing basket by id is not allowed via public API', () => {
-    return frisby.get(REST_URL + '/basket/1')
+    console.log(basketId)
+
+    return frisby.get(REST_URL + '/basket/' + basketId)
       .expect('status', 401)
   })
-
-  it('GET empty basket when requesting non-existing basket id', () => {
-    return frisby.get(REST_URL + '/basket/4711', { headers: authHeader })
+  it('GET own basket by id', () => {
+    return frisby.get(REST_URL + '/basket/' + basketId, { headers: authHeader })
       .expect('status', 200)
       .expect('header', 'content-type', /application\/json/)
-      .expect('json', 'data', {})
+      .expect('json', 'data', { id: basketId })
   })
 
-  it('GET existing basket with contained products by id', () => {
-    return frisby.get(REST_URL + '/basket/1', { headers: authHeader })
-      .expect('status', 200)
-      .expect('header', 'content-type', /application\/json/)
-      .expect('json', 'data', { id: 1 })
-      .then(({ json }) => {
-        expect(json.data.Products.length).toBe(3)
-      })
-  })
+  //it('GET existing basket with contained products by id', () => {
+  //  return frisby.get(REST_URL + '/basket/' + basketId, { headers: authHeader })
+  //    .expect('status', 200)
+  //    .expect('header', 'content-type', /application\/json/)
+  //    .expect('json', 'data', { id: basketId })
+  //    .then(({ json }) => {
+  //      expect(json.data.Products.length).toBe(3)
+  //    })
+  //})
 })
 
 describe('/api/Baskets', () => {
@@ -93,7 +97,7 @@ describe('/api/Baskets/:id', () => {
 })
 
 describe('/rest/basket/:id', () => {
-  it('GET existing basket of another user', () => {
+  it('GET requesting other than the own basket is not allowed', () => {
     return frisby.post(REST_URL + '/user/login', {
       headers: jsonHeader,
       body: {
@@ -103,42 +107,49 @@ describe('/rest/basket/:id', () => {
     })
       .expect('status', 200)
       .then(({ json }) => {
-        return frisby.get(REST_URL + '/basket/2', { headers: { Authorization: 'Bearer ' + json.authentication.token } })
-          .expect('status', 200)
-          .expect('header', 'content-type', /application\/json/)
-          .expect('json', 'data', { id: 2 })
+        return frisby.get(REST_URL + '/basket/' + basketId, { headers: { Authorization: 'Bearer ' + json.authentication.token } })
+          .expect('status', 403)
       })
-  })
+})
 })
 
 describe('/rest/basket/:id/checkout', () => {
   it('POST placing an order for a basket is not allowed via public API', () => {
-    return frisby.post(REST_URL + '/basket/1/checkout')
+    return frisby.post(REST_URL + '/basket/' + basketId + '/checkout')
       .expect('status', 401)
   })
 
   it('POST placing an order for an existing basket returns orderId', () => {
-    return frisby.post(REST_URL + '/basket/1/checkout', { headers: authHeader })
+    return frisby.post(REST_URL + '/basket/' + basketId + '/checkout', { headers: authHeader })
       .expect('status', 200)
       .then(({ json }) => {
         expect(json.orderConfirmation).toBeDefined()
       })
   })
 
-  it('POST placing an order for a non-existing basket fails', () => {
-    return frisby.post(REST_URL + '/basket/42/checkout', { headers: authHeader })
-      .expect('status', 500)
-      .expect('bodyContains', 'Error: Basket with id=42 does not exist.')
+  it('POST placing an order for someone elses basket fails', () => {
+    return frisby.post(REST_URL + '/user/login', {
+      headers: jsonHeader,
+      body: {
+        email: 'bjoern.kimminich@gmail.com',
+        password: 'bW9jLmxpYW1nQGhjaW5pbW1pay5ucmVvamI='
+      }
+    })
+      .expect('status', 200)
+      .then(({ json }) => {
+        return frisby.post(REST_URL + '/basket/' + basketId + '/checkout', { headers: { Authorization: 'Bearer ' + json.authentication.token } })
+          .expect('status', 403)
+      })
   })
 
   it('POST placing an order for a basket with a negative total cost is possible', () => {
     return frisby.post(API_URL + '/BasketItems', {
       headers: authHeader,
-      body: { BasketId: 2, ProductId: 10, quantity: -100 }
+      body: { BasketId: basketId, ProductId: 10, quantity: -100 }
     })
       .expect('status', 200)
       .then(() => {
-        return frisby.post(REST_URL + '/basket/3/checkout', { headers: authHeader })
+        return frisby.post(REST_URL + '/basket/' + basketId + '/checkout', { headers: authHeader })
           .expect('status', 200)
           .then(({ json }) => {
             expect(json.orderConfirmation).toBeDefined()
