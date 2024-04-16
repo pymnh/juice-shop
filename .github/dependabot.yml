@@ -1,0 +1,10 @@
+version: 1
+update_configs:
+  - package_manager: "javascript"
+    directory: "/frontend"
+    update_schedule: "live"
+    target_branch: "master"
+    default_reviewers:
+      - "pymnh"
+    default_labels:
+      - "dependencies"
