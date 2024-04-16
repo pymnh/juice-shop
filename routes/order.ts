@@ -34,6 +34,10 @@ interface Product {
 module.exports = function placeOrder () {
   return (req: Request, res: Response, next: NextFunction) => {
     const id = req.params.id
+    const user = security.authenticatedUsers.from(req)
+    if (id != user.bid) {
+      res.status(403).json({ error: 'Unauthorized' });
+    } else {
     BasketModel.findOne({ where: { id }, include: [{ model: ProductModel, paranoid: false, as: 'Products' }] })
       .then(async (basket: BasketModel | null) => {
         if (basket != null) {
@@ -173,6 +177,7 @@ module.exports = function placeOrder () {
       }).catch((error: unknown) => {
         next(error)
       })
+    }
   }
 }
 
